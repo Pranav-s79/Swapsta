@@ -38,6 +38,20 @@ export interface Listing {
   tags: string[];
 }
 
+export interface RankingBreakdown {
+  relevance: number;
+  proximity: number;
+  affordability: number;
+}
+
+export interface RankedListing {
+  listing: Listing;
+  score: number;
+  distance: number;
+  reason: string;
+  breakdown: RankingBreakdown;
+}
+
 export const CAMPUS_LOCATIONS: CampusLocation[] = [
   { name: "Memorial Student Center", shortName: "MSC", lat: 30.6122, lng: -96.3414, mapX: 47, mapY: 58 },
   { name: "Zachry Engineering Complex", shortName: "Zachry", lat: 30.6213, lng: -96.3404, mapX: 63, mapY: 24 },
@@ -79,6 +93,36 @@ export const INITIAL_LISTINGS: Listing[] = [
     location: CAMPUS_LOCATIONS[3],
     createdAt: "2026-09-02T13:15:00.000Z",
     tags: ["bike", "bicycle", "commute", "ride", "transport"],
+  },
+  {
+    id: "ti-84-plus",
+    title: "TI-84 Plus Graphing Calculator",
+    description: "Used for calculus and statistics. All keys work and batteries are included. Some wear on the case.",
+    category: "Electronics",
+    condition: "Good",
+    listingType: "Sell",
+    price: 40,
+    image: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?auto=format&fit=crop&w=900&q=85",
+    imageAlt: "Calculator and math notes",
+    seller: { id: "jordan", name: "Jordan C.", initials: "JC", verified: true },
+    location: CAMPUS_LOCATIONS[4],
+    createdAt: "2026-09-03T14:10:00.000Z",
+    tags: ["calculator", "math", "calculus", "statistics", "graphing", "exam", "ti84"],
+  },
+  {
+    id: "casio-fx-cg50",
+    title: "Casio FX-CG50 Calculator",
+    description: "Color graphing calculator in working condition. Includes the hard cover and USB cable.",
+    category: "Electronics",
+    condition: "Good",
+    listingType: "Sell",
+    price: 50,
+    image: "https://images.unsplash.com/photo-1611532736597-de2d4265fba3?auto=format&fit=crop&w=900&q=85",
+    imageAlt: "Scientific calculator on paper",
+    seller: { id: "alex", name: "Alex N.", initials: "AN", verified: true },
+    location: CAMPUS_LOCATIONS[3],
+    createdAt: "2026-09-02T09:40:00.000Z",
+    tags: ["calculator", "math", "engineering", "graphing", "exam", "casio"],
   },
   {
     id: "desk-lamp",
@@ -190,8 +234,16 @@ const CONCEPTS: ReadonlyArray<readonly [readonly string[], readonly string[]]> =
   [["study", "night", "dark"], ["lamp", "light", "desk"]],
 ];
 
+const SEARCH_STOP_WORDS = new Set([
+  "a", "an", "and", "for", "i", "in", "into", "is", "it", "me", "my", "need", "of", "on", "something", "the", "to", "tomorrow", "with",
+]);
+
 function normalize(value: string): string[] {
-  return value.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((word) => word.length > 1);
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 1 && !SEARCH_STOP_WORDS.has(word));
 }
 
 export function matchScore(listing: Listing, query: string): number {
@@ -217,6 +269,78 @@ export function matchScore(listing: Listing, query: string): number {
   }
 
   return score;
+}
+
+function proximityScore(distance: number): number {
+  if (distance <= 0.25) return 15;
+  if (distance <= 0.5) return 12;
+  if (distance <= 1) return 8;
+  if (distance <= 2) return 4;
+  return 0;
+}
+
+function affordabilityScore(listing: Listing): number {
+  if (listing.listingType === "Free") return 15;
+  if (listing.listingType === "Trade") return 8;
+  if (listing.price === undefined) return 0;
+  if (listing.price <= 25) return 12;
+  if (listing.price <= 50) return 9;
+  if (listing.price <= 75) return 6;
+  if (listing.price <= 150) return 3;
+  return 0;
+}
+
+function rankingReason(listing: Listing, query: string, distance: number, breakdown: RankingBreakdown): string {
+  const queryWords = normalize(query);
+  const title = listing.title.toLowerCase();
+  const matchedTitleTerms = queryWords.filter((word) => title.includes(word));
+  const parts: string[] = [];
+
+  if (matchedTitleTerms.length > 0) {
+    parts.push(`Title matches ${matchedTitleTerms.slice(0, 2).join(" and ")}`);
+  } else if (breakdown.relevance > 0) {
+    parts.push(`Related to ${queryWords.slice(0, 3).join(" ")}`);
+  }
+
+  parts.push(`${distance < 0.1 ? "at your location" : `${distance.toFixed(1)} mi away`}`);
+
+  if (listing.listingType === "Free") parts.push("free");
+  else if (listing.listingType === "Trade") parts.push("available for trade");
+  else if (listing.price !== undefined) parts.push(`listed at $${listing.price.toFixed(0)}`);
+
+  return parts.join(" · ");
+}
+
+export function rankListings(
+  listings: readonly Listing[],
+  query: string,
+  origin: CampusLocation = USER_LOCATION,
+): RankedListing[] {
+  const hasQuery = normalize(query).length > 0;
+
+  return listings
+    .map((listing): RankedListing => {
+      const distance = distanceMiles(origin, listing.location);
+      const breakdown: RankingBreakdown = {
+        relevance: hasQuery ? matchScore(listing, query) : 0,
+        proximity: proximityScore(distance),
+        affordability: affordabilityScore(listing),
+      };
+
+      return {
+        listing,
+        distance,
+        breakdown,
+        score: breakdown.relevance + breakdown.proximity + breakdown.affordability,
+        reason: rankingReason(listing, query, distance, breakdown),
+      };
+    })
+    .filter((result) => !hasQuery || result.breakdown.relevance > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      if (left.distance !== right.distance) return left.distance - right.distance;
+      return new Date(right.listing.createdAt).getTime() - new Date(left.listing.createdAt).getTime();
+    });
 }
 
 export function formatPrice(listing: Pick<Listing, "listingType" | "price">): string {

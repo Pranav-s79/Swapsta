@@ -41,9 +41,9 @@ highlight best match with a reason
 | Relevance scoring (`matchScore`) | MUST | built + tested (5/5 green) |
 | Distance calc + display (`distanceMiles`) | MUST | built + tested |
 | App renders + styles load | MUST | verified — `npm run build` passes |
-| Best-match callout with a stated reason | MUST | verify |
-| Campus map view | SHOULD | not started |
-| Create-listing form | SHOULD | not started |
+| Best-match callout with a stated reason | MUST | built + tested (`rankListings`) |
+| Campus map view | SHOULD | built (`/map`) |
+| Create-listing form | SHOULD | built (`/sell`, session storage) |
 | Grok / live AI call | SHOULD | not started — rules-based path must stay standalone |
 | Auth, payments, messaging, ratings, persistence | CUT | — |
 
@@ -56,9 +56,10 @@ Only MUST features are guaranteed engineering time.
 > Does the rules-based `matchScore` rank a plain-language request well enough that the
 > top result is obviously correct on stage — with no AI call in the path?
 
-Current evidence: `src/lib/listings.test.ts` asserts a calculator outranks a mini fridge for
-"calculator for my engineering exam", and that "moving into my dorm" scores above zero.
-That is the spike. Extend it before trusting a new phrasing on stage.
+Current evidence: `src/lib/listings.test.ts` contains 10 passing tests. The exact demo request
+selects the TI-84 Plus CE and returns a reason containing the title match, distance, and price.
+Distance, affordability, free/trade listings, empty queries, ties, and irrelevant searches are
+also covered.
 
 **Pivot rule:** if a demo phrase ranks wrong, fix it with seed data or scoring weights.
 Do not reach for an AI call to rescue ranking during the hour.
@@ -141,3 +142,7 @@ Append one line per real decision. Newest last.
 | 1 | Plain CSS with semantic class names, no Tailwind | Matches existing `Marketplace.tsx`; swapping now costs demo time |
 | 2 | Rules-based `matchScore`, no Grok in the demo path | PRD §8 — marketplace must work without AI; removes the biggest demo failure source |
 | 3 | Repo split out of `SideProjects` into its own git repo on `Swapsta` | Parent folder is an unrelated repo (`Arx`); Swappa needs its own history |
+| 4 | Best-match ranking combines relevance, proximity, and affordability and returns a reason | Makes the Demo Contract measurable and keeps ranking independent of AI availability |
+| 5 | MVP screens use real routes; created listings use session storage and saved IDs use local storage | Makes navigation and the demo flow work without adding backend or authentication scope |
+| 6 | Visual layer rebuilt as inventory-first utility: hero and trust strip deleted, neutral chrome, one ochre accent reserved for the best-match callout | The landing-page framing (stock-photo hero, three benefit columns, coral/mint palette, pill-everything) read as AI-generated; a marketplace should show inventory first, and confining color to the callout makes ranking the only thing on the page that shouts |
+| 7 | Campus-specific strings derived from `USER_LOCATION` / `CAMPUS_LOCATIONS` instead of hardcoded; multi-campus model deferred | Product is universal, not Texas A&M-only. Components are now campus-agnostic, but `src/lib/listings.ts` seed data is still A&M — the `Campus` type, searchable school picker, and multi-campus seed data are the next slice |
