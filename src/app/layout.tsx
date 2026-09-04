@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Swappa — Campus finds, close by",
+  title: "Swappa — campus marketplace",
   description: "Buy, trade, and give away useful things around campus.",
 };
 

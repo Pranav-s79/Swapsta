@@ -10,7 +10,6 @@ import {
   Box,
   Check,
   ChevronDown,
-  CircleDollarSign,
   Clock3,
   Grid2X2,
   Heart,
@@ -27,7 +26,8 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   CAMPUS_LOCATIONS,
   CATEGORIES,
@@ -38,9 +38,10 @@ import {
   INITIAL_LISTINGS,
   Listing,
   ListingType,
-  matchScore,
+  rankListings,
   USER_LOCATION,
 } from "@/lib/listings";
+import { readAllListings, readSavedListingIds, writeSavedListingIds } from "./marketplace-storage";
 
 type ViewMode = "grid" | "map";
 type SortMode = "best" | "closest" | "lowest" | "newest";
@@ -220,9 +221,9 @@ function CampusMap({ listings, onOpen }: { listings: Listing[]; onOpen: (listing
 
   return (
     <div className="campus-map">
-      <div className="map-label"><MapPin size={16} /> Texas A&amp;M campus</div>
+      <div className="map-label"><MapPin size={16} /> Near {USER_LOCATION.shortName}</div>
       <div className="map-road road-one" /><div className="map-road road-two" /><div className="map-road road-three" />
-      <span className="building building-one">ZACHRY</span><span className="building building-two">EVANS</span><span className="building building-three">MSC</span><span className="building building-four">COMMONS</span>
+      {CAMPUS_LOCATIONS.slice(0, 4).map((location, index) => <span className={`building building-${["one", "two", "three", "four"][index]}`} key={location.name}>{location.shortName.toUpperCase()}</span>)}
       <span className="you-marker" style={{ left: `${USER_LOCATION.mapX}%`, top: `${USER_LOCATION.mapY}%` }}><i /> You</span>
       {listings.map((listing) => (
         <button
@@ -246,11 +247,12 @@ function CampusMap({ listings, onOpen }: { listings: Listing[]; onOpen: (listing
   );
 }
 
-export function Marketplace() {
+export function Marketplace({ initialType = "All" }: { initialType?: ListingType | "All" }) {
+  const router = useRouter();
   const [listings, setListings] = useState<Listing[]>(INITIAL_LISTINGS);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>("All");
-  const [typeFilter, setTypeFilter] = useState<ListingType | "All">("All");
+  const [typeFilter, setTypeFilter] = useState<ListingType | "All">(initialType);
   const [sort, setSort] = useState<SortMode>("best");
   const [view, setView] = useState<ViewMode>("grid");
   const [saved, setSaved] = useState<Set<string>>(new Set());
@@ -258,38 +260,85 @@ export function Marketplace() {
   const [creating, setCreating] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<"idle" | "loading" | "enhanced" | "empty" | "unavailable" | "error">("idle");
+  const [aiTerms, setAiTerms] = useState<string[]>([]);
+  const [baseQuery, setBaseQuery] = useState("");
 
-  const visibleListings = useMemo(() => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setListings(readAllListings());
+      setSaved(readSavedListingIds());
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const rankedListings = useMemo(() => {
     const filtered = listings.filter((listing) => {
       const categoryMatches = category === "All" || listing.category === category;
       const typeMatches = typeFilter === "All" || listing.listingType === typeFilter;
-      const searchMatches = query.trim() === "" || matchScore(listing, query) > 0;
-      return categoryMatches && typeMatches && searchMatches;
+      return categoryMatches && typeMatches;
     });
+    const ranked = rankListings(filtered, query, USER_LOCATION);
 
-    return filtered.sort((a, b) => {
-      if (sort === "closest") return distanceMiles(USER_LOCATION, a.location) - distanceMiles(USER_LOCATION, b.location);
-      if (sort === "lowest") return (a.price ?? 0) - (b.price ?? 0);
-      if (sort === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      if (query.trim()) return matchScore(b, query) - matchScore(a, query);
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    return ranked.sort((a, b) => {
+      if (sort === "closest") return a.distance - b.distance;
+      if (sort === "lowest") return (a.listing.price ?? 0) - (b.listing.price ?? 0);
+      if (sort === "newest" || (sort === "best" && query.trim() === "")) return new Date(b.listing.createdAt).getTime() - new Date(a.listing.createdAt).getTime();
+      return b.score - a.score;
     });
   }, [category, listings, query, sort, typeFilter]);
+  const visibleListings = rankedListings.map((result) => result.listing);
+  const bestMatch = query.trim() && sort === "best" ? rankedListings[0] : undefined;
 
   function toggleSaved(id: string) {
     setSaved((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      writeSavedListingIds(next);
       return next;
     });
+  }
+
+  async function tryAiSearch() {
+    const current = query.trim();
+    if (!current) return;
+    setBaseQuery(current);
+    setAiStatus("loading");
+    try {
+      const response = await fetch("/api/ai/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: current }),
+      });
+      const data = await response.json();
+      if (!data.enabled) {
+        setAiStatus("unavailable");
+        return;
+      }
+      if (Array.isArray(data.terms) && data.terms.length > 0) {
+        setAiTerms(data.terms);
+        setQuery(data.expandedQuery);
+        setAiStatus("enhanced");
+      } else {
+        setAiStatus("empty");
+      }
+    } catch {
+      setAiStatus("error");
+    }
+  }
+
+  function clearAiSearch() {
+    setQuery(baseQuery);
+    setAiTerms([]);
+    setAiStatus("idle");
   }
 
   function createListing(listing: Listing) {
     setListings((current) => [listing, ...current]);
     setCreating(false);
     setCategory("All"); setTypeFilter("All"); setSort("newest"); setView("grid");
-    setToast("Your listing is live on campus!");
+    setToast("Listing posted.");
     window.setTimeout(() => setToast(null), 3500);
   }
 
@@ -297,33 +346,27 @@ export function Marketplace() {
     <main>
       <header className="site-header">
         <div className="nav-shell">
-          <button className="brand" type="button" onClick={() => { setQuery(""); setCategory("All"); }} aria-label="Swappa home"><span className="brand-mark"><Zap size={18} fill="currentColor" /></span>swappa<span>.</span></button>
+          <button className="brand" type="button" onClick={() => { setQuery(""); setCategory("All"); }} aria-label="Swappa home"><span className="brand-mark"><Zap size={18} fill="currentColor" /></span>swappa</button>
           <nav className={mobileNav ? "open" : ""} aria-label="Primary navigation">
             <button type="button" className="active">Browse</button>
             <button type="button" onClick={() => { setTypeFilter("Trade"); setMobileNav(false); }}>Trade</button>
             <button type="button" onClick={() => { setTypeFilter("Free"); setMobileNav(false); }}>Free stuff</button>
           </nav>
           <div className="nav-actions">
-            <button className="saved-nav" type="button" aria-label={`${saved.size} saved items`}><Heart size={19} /> <span>Saved</span>{saved.size > 0 && <b>{saved.size}</b>}</button>
-            <button className="sell-button" type="button" onClick={() => setCreating(true)}><PackagePlus size={18} /> Sell an item</button>
+            <button className="saved-nav" type="button" onClick={() => router.push("/saved")} aria-label={`${saved.size} saved items`}><Heart size={19} /> <span>Saved</span>{saved.size > 0 && <b>{saved.size}</b>}</button>
+            <button className="sell-button" type="button" onClick={() => router.push("/sell")}><PackagePlus size={18} /> List an item</button>
             <button className="mobile-menu" type="button" onClick={() => setMobileNav((open) => !open)} aria-label="Toggle menu"><Menu size={22} /></button>
           </div>
         </div>
       </header>
 
-      <section className="hero">
-        <div className="hero-image" aria-hidden="true" />
-        <div className="hero-overlay" />
-        <div className="hero-content">
-          <div className="campus-pill"><span /> Built for Aggieland</div>
-          <h1>Good finds.<br /><em>Right around the corner.</em></h1>
-          <p>Buy, trade, and pass things on with students nearby. No shipping, no strangers across town.</p>
-          <div className="hero-search">
-            <Sparkles size={20} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="What do you need? Try describing it…" aria-label="Search listings" />
-            <button type="button" onClick={() => document.getElementById("marketplace")?.scrollIntoView({ behavior: "smooth" })}><Search size={19} /><span>Search</span></button>
+      <section className="search-shell">
+        <div className="search-inner">
+          <div className="search-bar">
+            <Search size={19} />
+            <input value={query} onChange={(event) => { setQuery(event.target.value); setAiStatus("idle"); setAiTerms([]); }} placeholder="Search listings, or describe what you need" aria-label="Search listings" />
           </div>
-          <div className="quick-searches"><span>Popular:</span>{quickSearches.map((item) => <button type="button" key={item} onClick={() => { setQuery(item); document.getElementById("marketplace")?.scrollIntoView({ behavior: "smooth" }); }}>{item}</button>)}</div>
+          <div className="search-suggest"><span>Try:</span>{quickSearches.map((item) => <button type="button" key={item} onClick={() => setQuery(item)}>{item}</button>)}</div>
         </div>
       </section>
 
@@ -335,8 +378,8 @@ export function Marketplace() {
 
       <section className="marketplace-shell" id="marketplace">
         <div className="marketplace-heading">
-          <div><span className="section-kicker"><MapPin size={15} /> Near the MSC</span><h2>{query ? "Matches for you" : "Fresh around campus"}</h2><p>{visibleListings.length} useful finds within walking distance</p></div>
-          <div className="view-switcher"><button type="button" className={view === "grid" ? "active" : ""} onClick={() => setView("grid")}><Grid2X2 size={17} /> Grid</button><button type="button" className={view === "map" ? "active" : ""} onClick={() => setView("map")}><Map size={17} /> Map</button></div>
+          <div><h2>{query ? "Search results" : "Recent listings"}</h2><p>{visibleListings.length} listings · within walking distance of {USER_LOCATION.shortName}</p></div>
+          <div className="view-switcher"><button type="button" className={view === "grid" ? "active" : ""} onClick={() => setView("grid")}><Grid2X2 size={17} /> Grid</button><button type="button" onClick={() => router.push("/map")}><Map size={17} /> Map</button></div>
         </div>
 
         <div className="toolbar">
@@ -344,20 +387,33 @@ export function Marketplace() {
           <label className="sort-control">Sort by<select value={sort} onChange={(event) => setSort(event.target.value as SortMode)}><option value="best">Best match</option><option value="closest">Closest first</option><option value="lowest">Lowest price</option><option value="newest">Newest first</option></select><ChevronDown size={15} /></label>
         </div>
 
+        {aiStatus === "enhanced" && (
+          <div className="ai-enhanced-note">
+            <Sparkles size={14} /> Grok added: {aiTerms.join(", ")}
+            <button type="button" onClick={clearAiSearch}>Reset</button>
+          </div>
+        )}
+        {bestMatch && <aside className="best-match-callout"><div><span>Best match</span><strong>{bestMatch.listing.title}</strong><p>{bestMatch.reason}</p></div><button type="button" onClick={() => router.push(`/listings/${bestMatch.listing.id}`)}>View listing <ArrowRight size={16} /></button></aside>}
+
         {visibleListings.length === 0 ? (
-          <div className="empty-state"><Search size={28} /><h3>No finds yet</h3><p>Try a broader description or clear a filter.</p><button type="button" onClick={() => { setQuery(""); setCategory("All"); setTypeFilter("All"); }}>Clear filters</button></div>
+          <div className="empty-state">
+            <Search size={28} />
+            <h3>No listings match</h3>
+            <p>Try fewer words, or clear the filters.</p>
+            {query.trim() && aiStatus !== "unavailable" && (
+              <button type="button" className="ai-search-button" onClick={tryAiSearch} disabled={aiStatus === "loading"}>
+                <Sparkles size={16} />
+                {aiStatus === "loading" ? "Asking Grok\u2026" : aiStatus === "error" ? "Grok search failed \u2014 try again" : aiStatus === "empty" ? "Grok found nothing new" : "Ask Grok to expand this search"}
+              </button>
+            )}
+            <button type="button" onClick={() => { setQuery(""); setCategory("All"); setTypeFilter("All"); setAiStatus("idle"); setAiTerms([]); }}>Clear filters</button>
+          </div>
         ) : view === "grid" ? (
-          <div className="listing-grid">{visibleListings.map((listing) => <ListingCard key={listing.id} listing={listing} saved={saved.has(listing.id)} onSave={() => toggleSaved(listing.id)} onOpen={() => setSelected(listing)} />)}</div>
+          <div className="listing-grid">{visibleListings.map((listing) => <ListingCard key={listing.id} listing={listing} saved={saved.has(listing.id)} onSave={() => toggleSaved(listing.id)} onOpen={() => router.push(`/listings/${listing.id}`)} />)}</div>
         ) : <CampusMap listings={visibleListings} onOpen={setSelected} />}
       </section>
 
-      <section className="trust-strip">
-        <div><span><MapPin size={22} /></span><h3>Campus-close</h3><p>Every listing is built around places you already know.</p></div>
-        <div><span><BadgeCheck size={22} /></span><h3>Student-first</h3><p>A local community made for quick, comfortable handoffs.</p></div>
-        <div><span><CircleDollarSign size={22} /></span><h3>Keep it moving</h3><p>Save money and keep useful stuff out of the landfill.</p></div>
-      </section>
-
-      <footer><button className="brand footer-brand" type="button"><span className="brand-mark"><Zap size={16} fill="currentColor" /></span>swappa<span>.</span></button><p>Made for campus life. From one semester to the next.</p><span>© 2026 Swappa</span></footer>
+      <footer><span className="brand footer-brand"><span className="brand-mark"><Zap size={16} fill="currentColor" /></span>swappa</span><span>© 2026 Swappa</span></footer>
 
       {selected && <DetailModal listing={selected} onClose={() => setSelected(null)} />}
       {creating && <CreateListingModal onClose={() => setCreating(false)} onCreate={createListing} />}
