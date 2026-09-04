@@ -21,6 +21,7 @@ once by hand.
 
 ```text
 config.toml           snippet to merge into ~/.codex/config.toml (not auto-loaded)
+agents/               role profiles — paste one above the task spec
 prompts/              the task spec format Claude uses to hand work over
 builds/               one record per task Codex completes
 ```

@@ -76,10 +76,15 @@ goes here **with a test**, never inline in the component.
 ## Your folders
 
 ```text
+.codex/agents/implementer.md      your default role profile
+.codex/agents/test-engineer.md    role profile when the job is tests
 .codex/prompts/task-template.md   the spec format you will be handed
 .codex/builds/NN-<slug>.md        your task specs, and the verified outcome
 .codex/config.toml                reference only — Codex reads ~/.codex/config.toml
 ```
+
+A role profile from `.codex/agents/` is normally pasted above your task. If none was, assume
+`implementer.md`. The full roster is in `design_process/ROLES.md`.
 
 Your task will arrive in the shape of `task-template.md`: objective, the exact files you may
 touch, acceptance criteria, test commands, boundaries. If a task reaches you missing any of

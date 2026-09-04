@@ -71,10 +71,20 @@ Each maps to a stage of the loop. Defined in `.claude/commands/`.
 ```text
 .claude/settings.json   permissions — npm/git read ops pre-allowed, push asks
 .claude/commands/       the loop commands above
+.claude/agents/         architect, designer — auto-loaded subagents
 .claude/builds/         one record per slice you attempt (TEMPLATE.md)
+.codex/agents/          implementer, test-engineer — paste-in role profiles
 .codex/prompts/         the task spec format you hand Codex
 .codex/builds/          specs you wrote for Codex + verified outcomes
+.grok/agents/           adversary, validator — paste-in, no CLI installed
+.grok/reports/          validation runs
 ```
+
+Full roster and handoff chain: `design_process/ROLES.md`.
+
+You delegate to **architect** for structural calls and **designer** for the visual layer.
+Codex implements. Grok judges. You are the only agent that verifies — read the real diff and
+the real command output before believing any of them.
 
 Write a build record when a slice lands **or** when it is abandoned — the abandoned ones
 are the ones worth not repeating. Scope decisions still go in the `design_process/BUILD.md`
