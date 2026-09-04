@@ -73,6 +73,22 @@ goes here **with a test**, never inline in the component.
 
 ---
 
+## Your folders
+
+```text
+.codex/prompts/task-template.md   the spec format you will be handed
+.codex/builds/NN-<slug>.md        your task specs, and the verified outcome
+.codex/config.toml                reference only — Codex reads ~/.codex/config.toml
+```
+
+Your task will arrive in the shape of `task-template.md`: objective, the exact files you may
+touch, acceptance criteria, test commands, boundaries. If a task reaches you missing any of
+those, ask for the missing part rather than guessing at it.
+
+Do not write to `.claude/` — that is Claude's side.
+
+---
+
 ## Definition of done
 
 A task is done when all of these hold:

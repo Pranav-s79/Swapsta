@@ -1,0 +1,23 @@
+# Reference config for this project.
+#
+# Codex does NOT read this file. It reads ~/.codex/config.toml.
+# To apply, append the block below to ~/.codex/config.toml.
+#
+# The project is not currently trusted — without this entry Codex will prompt
+# for approval on every command in this directory.
+
+[projects.'c:\SideProjects\Tidal_SpaceX']
+trust_level = "trusted"
+
+# ---------------------------------------------------------------------------
+# Recommended settings for this project, for reference. These are global keys —
+# set them in ~/.codex/config.toml only if you want them everywhere, since Codex
+# has no per-project override for them.
+#
+#   model                  = "gpt-5.6-sol"
+#   model_reasoning_effort = "high"     # this repo is small; depth costs little
+#   personality            = "pragmatic"
+#
+# Current global values were already: gpt-5.6-sol / high / pragmatic.
+# No change needed unless you want to diverge.
+# ---------------------------------------------------------------------------

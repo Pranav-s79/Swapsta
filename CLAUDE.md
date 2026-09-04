@@ -53,6 +53,35 @@ Rules when delegating:
 
 ---
 
+## Loop commands
+
+Each maps to a stage of the loop. Defined in `.claude/commands/`.
+
+| Command | Stage | Does |
+|---|---|---|
+| `/define` | 00–05 | Lock the Demo Contract |
+| `/scope` | 05–10 | MUST/SHOULD/CUT + rough architecture |
+| `/spike` | 10–25 | Prove the riskiest assumption |
+| `/slice` | 25–45 | Build one vertical slice end to end |
+| `/demo-check` | 45–60 | Rehearse the flow, fix by priority |
+| `/handoff` | any | Write a Codex task spec |
+
+## Agent folders
+
+```text
+.claude/settings.json   permissions — npm/git read ops pre-allowed, push asks
+.claude/commands/       the loop commands above
+.claude/builds/         one record per slice you attempt (TEMPLATE.md)
+.codex/prompts/         the task spec format you hand Codex
+.codex/builds/          specs you wrote for Codex + verified outcomes
+```
+
+Write a build record when a slice lands **or** when it is abandoned — the abandoned ones
+are the ones worth not repeating. Scope decisions still go in the `design_process/BUILD.md`
+decision log, not here.
+
+---
+
 ## Stack facts
 
 - **Next.js 16.3.4**, App Router, React 19, TypeScript `strict`
